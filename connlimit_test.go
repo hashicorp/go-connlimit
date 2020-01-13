@@ -118,7 +118,7 @@ func TestLimiterDenies(t *testing.T) {
 	defer conn2.Close()
 
 	// Third client should fail (but only _after_ TCP conn is accepted)
-	conn3, got, err := clientRead(t, serverAddr)
+	conn3, _, err := clientRead(t, serverAddr)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "EOF")
 	defer conn3.Close()
@@ -141,11 +141,30 @@ func TestLimiterDenies(t *testing.T) {
 		}
 		require.NoError(t, err, "attempt %d", attempts)
 		require.Equal(t, "Hello", got)
-		conn4.Close()
+		// Defer will not fire til the end of the test which is what we intend as we
+		// want this conn to stay alive and are just about to exit this loop and
+		// continue.
+		defer conn4.Close()
 		// If we made it here we succeeded.
 		break
 	}
 
+	// Reset the limit
+	lim.SetConfig(Config{
+		MaxConnsPerClientIP: 3,
+	})
+
+	// Should be able to add another new connection now
+	conn5, got, err := clientRead(t, serverAddr)
+	require.NoError(t, err)
+	require.Equal(t, "Hello", got)
+	defer conn5.Close()
+
+	// But no more than that
+	conn6, _, err := clientRead(t, serverAddr)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "EOF")
+	defer conn6.Close()
 }
 
 // TestLimiterConcurrencyFuzz is a probabalistic sanity check. It doesn't prove
