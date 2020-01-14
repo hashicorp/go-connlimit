@@ -18,8 +18,19 @@ var (
 // from each client IP. It may be used in it's zero value although no limits
 // will be configured initially - they can be set later with SetConfig.
 type Limiter struct {
-	cs  map[string]map[net.Conn]struct{}
-	l   sync.Mutex
+	// cs stores the map of active connections by IP address. We store a set of
+	// conn pointers not just a counter because http.Server.ConnState hook only
+	// gives us a connection object between calls so we need to know if a closed
+	// conn is one that was previously accepted or one we've just closed in the
+	// ConnState hook because the client has hit its limit.
+	cs map[string]map[net.Conn]struct{}
+
+	// l protects access to cs
+	l sync.Mutex
+
+	// cfg is stored atomically to provide non-blocking reads via Config. This
+	// might be important if this is called regularly in a health or metrics
+	// endpoint and shouldn't block new connections being established.
 	cfg atomic.Value
 }
 
@@ -94,17 +105,19 @@ func addrKey(conn net.Conn) string {
 	addr := conn.RemoteAddr()
 	switch a := addr.(type) {
 	case *net.TCPAddr:
-		return addr.Network() + "/" + a.IP.String()
+		return "ip:" + a.IP.String()
 	case *net.UDPAddr:
-		return addr.Network() + "/" + a.IP.String()
+		return "ip:" + a.IP.String()
 	case *net.IPAddr:
-		return addr.Network() + "/" + a.IP.String()
+		return "ip:" + a.IP.String()
 	default:
-		// not sure what to do with this, just assume whole Addr is relevant.
+		// not sure what to do with this, just assume whole Addr is relevant?
 		return addr.Network() + "/" + addr.String()
 	}
 }
 
+// freeConn removes a connection from the map if it's present. It is a no-op if
+// the conn was never accepted by Accept.
 func (l *Limiter) freeConn(conn net.Conn) {
 	addrKey := addrKey(conn)
 
@@ -123,7 +136,7 @@ func (l *Limiter) freeConn(conn net.Conn) {
 }
 
 // Config returns the current limiter configuration. It is safe to call from any
-// goroutine.
+// goroutine and does not block new connections being accepted.
 func (l *Limiter) Config() Config {
 	cfgRaw := l.cfg.Load()
 	if cfg, ok := cfgRaw.(Config); ok {
@@ -133,7 +146,8 @@ func (l *Limiter) Config() Config {
 }
 
 // SetConfig dynamically updates the limiter configuration. It is safe to call
-// from any goroutine.
+// from any goroutine. Note that if the limit is lowered, active conns will not
+// be closed and may remain over the limit until they close naturally.
 func (l *Limiter) SetConfig(c Config) {
 	l.cfg.Store(c)
 }
@@ -157,6 +171,9 @@ func (l *Limiter) HTTPConnStateFunc() func(net.Conn, http.ConnState) {
 		case http.StateHijacked:
 			l.freeConn(conn)
 		case http.StateClosed:
+			// Maybe free the conn. This might be a conn we closed in the case above
+			// that was never counted as it was over limit but freeConn will be a
+			// no-op in that case.
 			l.freeConn(conn)
 		}
 	}

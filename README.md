@@ -69,3 +69,9 @@ The limiter supports dynamic reconfiguration. At any time, any goroutine may
 call `limiter.SetConfig(c Config)` which will atomically update the config. All
 subsequent calls to `Accept` will use the newly configured limits in their
 decisions and calls to `limiter.Config()` will return the new config.
+
+Note that if the limits are reduced that will only prevent further connections
+beyond the new limit - existing connections are not actively closed to meet the
+limit. In cases where this is critical it's often preferable to mitigate in a
+more focussed way e.g. by adding an iptables rule that blocks all connections
+from one malicious client without affecting the whole server.
