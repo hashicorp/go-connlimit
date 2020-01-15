@@ -20,7 +20,7 @@ s.limiter = NewLimiter(Config{
 ```
 
 ```
-// handleConn is called in it's own goroutine for each net.Conn accepted by the
+// handleConn is called in its own goroutine for each net.Conn accepted by
 // a net.Listener.
 func (s *Server) handleConn(conn net.Conn) {
   defer conn.Close()

@@ -170,7 +170,7 @@ func TestLimiterDenies(t *testing.T) {
 // TestLimiterConcurrencyFuzz is a probabalistic sanity check. It doesn't prove
 // anything is correct as such but does exercise the limiter with concurrent
 // requests. Running it with race detector enabled gives some confidence that
-// the limiter is correctly handling syncronization.
+// the limiter is correctly handling synchronization.
 func TestLimiterConcurrencyFuzz(t *testing.T) {
 	lim := NewLimiter(Config{
 		MaxConnsPerClientIP: 5,
