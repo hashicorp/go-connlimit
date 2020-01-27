@@ -2,7 +2,10 @@ package connlimit
 
 import "net"
 
-type wrappedConn struct {
+// WrappedConn wraps a net.Conn and free() func returned by Limiter.Accept so
+// that when the wrapped connections Close method is called, its free func is
+// also called.
+type WrappedConn struct {
 	net.Conn
 	free func()
 }
@@ -11,14 +14,14 @@ type wrappedConn struct {
 // called. Useful when handing off tracked connections to libraries that close
 // them.
 func Wrap(conn net.Conn, free func()) net.Conn {
-	return wrappedConn{
+	return &WrappedConn{
 		Conn: conn,
 		free: free,
 	}
 }
 
 // Close frees the tracked connection and closes the underlying net.Conn.
-func (w wrappedConn) Close() error {
+func (w *WrappedConn) Close() error {
 	w.free()
 	return w.Conn.Close()
 }
