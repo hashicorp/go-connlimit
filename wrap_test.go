@@ -84,3 +84,66 @@ func TestWrapClose(t *testing.T) {
 		t.Fatalf("error from server goroutine: %v", err)
 	}
 }
+
+// TestWrap_SubLimit asserts that already wrapped connections may be passed to
+// a sub-limiter.
+func TestWrap_SubLimit(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	errCh := make(chan error, 1)
+	connCh := make(chan net.Conn, 1)
+	go func() {
+		defer l.Close()
+
+		for {
+			conn, err := l.Accept()
+			if err != nil {
+				errCh <- err
+				return
+			}
+
+			select {
+			case connCh <- conn:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	// Make a "real" conn
+	clientConn, err := net.DialTimeout("tcp", l.Addr().String(), 2*time.Second)
+	require.NoError(t, err)
+	defer clientConn.Close()
+
+	// Limit it
+	var serverConn net.Conn
+	select {
+	case serverConn = <-connCh:
+	case err = <-errCh:
+		t.Fatalf("error from listener: %v", err)
+	}
+	parent := NewLimiter(Config{
+		MaxConnsPerClientIP: 5,
+	})
+	child := NewLimiter(Config{
+		MaxConnsPerClientIP: 3,
+	})
+
+	freeParent, err := parent.Accept(serverConn)
+	require.NoError(t, err)
+
+	wrapParent := Wrap(serverConn, freeParent)
+	defer wrapParent.Close()
+
+	freeChild, err := child.Accept(wrapParent)
+	require.NoError(t, err)
+
+	// Success!
+	freeChild()
+}
