@@ -160,6 +160,8 @@ func TestLimiterDenies(t *testing.T) {
 	require.Equal(t, "Hello", got)
 	defer conn5.Close()
 
+	require.Equal(t, 3, lim.NumOpen(conn5.RemoteAddr()))
+
 	// But no more than that
 	conn6, _, err := clientRead(t, serverAddr)
 	require.Error(t, err)
