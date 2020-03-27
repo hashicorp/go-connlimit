@@ -197,8 +197,6 @@ func (l *Limiter) HTTPConnStateFunc() func(net.Conn, http.ConnState) {
 		"Content-Type: text/plain\r\n"+
 		"Content-Length: %d\r\n"+
 		"Connection: close\r\n\r\n%s", len(message), message))
-	// Buffer shared by all clients, we don't care about result
-	readBuffer := make([]byte, 0, 4096)
 	return func(conn net.Conn, state http.ConnState) {
 		switch state {
 		case http.StateNew:
@@ -209,11 +207,7 @@ func (l *Limiter) HTTPConnStateFunc() func(net.Conn, http.ConnState) {
 					conn.SetDeadline(time.Now().Add(l.RWDealineMaxDelay))
 				}
 				if err == ErrPerClientIPLimitReached {
-					// We read to be sure not to block the client
-					_, err := conn.Read(readBuffer)
-					if err == nil {
-						conn.Write(tooManyRequestsResponse)
-					}
+					conn.Write(tooManyRequestsResponse)
 				}
 				conn.Close()
 			}
