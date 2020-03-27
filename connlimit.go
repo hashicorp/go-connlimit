@@ -36,7 +36,7 @@ type Limiter struct {
 	cfg atomic.Value
 
 	// Max duration to try handing nicely error messages for client
-	RWDealineMaxDelay time.Duration
+	RWDeadlineMaxDelay time.Duration
 }
 
 // Config is the configuration for the limiter.
@@ -52,7 +52,7 @@ type Config struct {
 	// When reading / writting errors on socket, don't spend more than this
 	// Duration before closing the connection.
 	// If not set, do not overwrite existing connection settings.
-	RWDealineMaxDelay time.Duration
+	RWDeadlineMaxDelay time.Duration
 }
 
 // NewLimiter returns a limiter with the specified config.
@@ -204,8 +204,8 @@ func (l *Limiter) HTTPConnStateFunc() func(net.Conn, http.ConnState) {
 			if err != nil {
 				if err == ErrPerClientIPLimitReached {
 					// We don't care about slow players
-					if l.RWDealineMaxDelay > 0 {
-						conn.SetDeadline(time.Now().Add(l.RWDealineMaxDelay))
+					if l.RWDeadlineMaxDelay > 0 {
+						conn.SetDeadline(time.Now().Add(l.RWDeadlineMaxDelay))
 					}
 					conn.Write(tooManyRequestsResponse)
 				}
