@@ -202,11 +202,11 @@ func (l *Limiter) HTTPConnStateFunc() func(net.Conn, http.ConnState) {
 		case http.StateNew:
 			_, err := l.Accept(conn)
 			if err != nil {
-				// We don't care about slow players
-				if l.RWDealineMaxDelay > 0 {
-					conn.SetDeadline(time.Now().Add(l.RWDealineMaxDelay))
-				}
 				if err == ErrPerClientIPLimitReached {
+					// We don't care about slow players
+					if l.RWDealineMaxDelay > 0 {
+						conn.SetDeadline(time.Now().Add(l.RWDealineMaxDelay))
+					}
 					conn.Write(tooManyRequestsResponse)
 				}
 				conn.Close()
