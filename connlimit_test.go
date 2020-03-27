@@ -315,6 +315,9 @@ func TestHTTPServer(t *testing.T) {
 				}
 				atomic.AddUint64(&reset, 1)
 			} else {
+				if resp.StatusCode == http.StatusTooManyRequests {
+					atomic.AddUint64(&reset, 1)
+				}
 				resp.Body.Close()
 			}
 		}(i)

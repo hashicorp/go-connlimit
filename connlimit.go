@@ -2,10 +2,12 @@ package connlimit
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 var (
@@ -32,6 +34,9 @@ type Limiter struct {
 	// might be important if this is called regularly in a health or metrics
 	// endpoint and shouldn't block new connections being established.
 	cfg atomic.Value
+
+	// Max duration to try handing nicely error messages for client
+	RWDealineMaxDelay time.Duration
 }
 
 // Config is the configuration for the limiter.
@@ -43,6 +48,11 @@ type Config struct {
 	// connected via a proxy or NAT gateway or similar will all be seen as coming
 	// from the same IP and so limited as one client.
 	MaxConnsPerClientIP int
+
+	// When reading / writting errors on socket, don't spend more than this
+	// Duration before closing the connection.
+	// If not set, do not overwrite existing connection settings.
+	RWDealineMaxDelay time.Duration
 }
 
 // NewLimiter returns a limiter with the specified config.
@@ -182,11 +192,29 @@ func (l *Limiter) SetConfig(c Config) {
 // their own calls if they need to continue limiting the number of concurrent
 // hijacked connections.
 func (l *Limiter) HTTPConnStateFunc() func(net.Conn, http.ConnState) {
+	message := "Your IP is issuing too many concurrent connections, please rate limit your calls\n"
+	tooManyRequestsResponse := []byte(fmt.Sprintf("HTTP/1.1 429 Too Many Requests\r\n"+
+		"Content-Type: text/plain\r\n"+
+		"Content-Length: %d\r\n"+
+		"Connection: close\r\n\r\n%s", len(message), message))
+	// Buffer shared by all clients, we don't care about result
+	readBuffer := make([]byte, 0, 4096)
 	return func(conn net.Conn, state http.ConnState) {
 		switch state {
 		case http.StateNew:
 			_, err := l.Accept(conn)
 			if err != nil {
+				// We don't care about slow players
+				if l.RWDealineMaxDelay > 0 {
+					conn.SetDeadline(time.Now().Add(l.RWDealineMaxDelay))
+				}
+				if err == ErrPerClientIPLimitReached {
+					// We read to be sure not to block the client
+					_, err := conn.Read(readBuffer)
+					if err == nil {
+						conn.Write(tooManyRequestsResponse)
+					}
+				}
 				conn.Close()
 			}
 		case http.StateHijacked:
