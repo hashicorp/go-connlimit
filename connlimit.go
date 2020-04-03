@@ -34,9 +34,6 @@ type Limiter struct {
 	// might be important if this is called regularly in a health or metrics
 	// endpoint and shouldn't block new connections being established.
 	cfg atomic.Value
-
-	// RWDeadlineMaxDelay is the max duration to try handing nicely error messages for client.
-	RWDeadlineMaxDelay time.Duration
 }
 
 // Config is the configuration for the limiter.
@@ -48,12 +45,6 @@ type Config struct {
 	// connected via a proxy or NAT gateway or similar will all be seen as coming
 	// from the same IP and so limited as one client.
 	MaxConnsPerClientIP int
-
-	// RWDeadlineMaxDelay is the max delay dealing with closing the connection.
-	// This is useful to handle clients being very slow to receive content for
-	// instance to send HTTP response.
-	// If not set, do not set a max duration for send existing connection settings.
-	RWDeadlineMaxDelay time.Duration
 }
 
 // NewLimiter returns a limiter with the specified config.
@@ -184,7 +175,7 @@ func (l *Limiter) SetConfig(c Config) {
 	l.cfg.Store(c)
 }
 
-// HTTPConnStateFunc returns a func that can be passed as the ConnState field of
+// HTTPConnStateFuncWithErrorHandler returns a func that can be passed as the ConnState field of
 // an http.Server. This intercepts new HTTP connections to the server and
 // applies the limiting to new connections.
 //
@@ -192,25 +183,15 @@ func (l *Limiter) SetConfig(c Config) {
 // in the limiter as if it was closed. Servers that use Hijacking must implement
 // their own calls if they need to continue limiting the number of concurrent
 // hijacked connections.
-func (l *Limiter) HTTPConnStateFunc() func(net.Conn, http.ConnState) {
-	message := "Your IP is issuing too many concurrent connections, please rate limit your calls\n"
-	tooManyRequestsResponse := []byte(fmt.Sprintf("HTTP/1.1 429 Too Many Requests\r\n"+
-		"Content-Type: text/plain\r\n"+
-		"Content-Length: %d\r\n"+
-		"Connection: close\r\n\r\n%s", len(message), message))
+// errorHandler MUST close the connection itself
+func (l *Limiter) HTTPConnStateFuncWithErrorHandler(errorHandler func(error, net.Conn)) func(net.Conn, http.ConnState) {
+
 	return func(conn net.Conn, state http.ConnState) {
 		switch state {
 		case http.StateNew:
 			_, err := l.Accept(conn)
 			if err != nil {
-				if err == ErrPerClientIPLimitReached {
-					// We don't care about slow players
-					if l.RWDeadlineMaxDelay > 0 {
-						conn.SetDeadline(time.Now().Add(l.RWDeadlineMaxDelay))
-					}
-					conn.Write(tooManyRequestsResponse)
-				}
-				conn.Close()
+				errorHandler(err, conn)
 			}
 		case http.StateHijacked:
 			l.freeConn(conn)
@@ -221,4 +202,32 @@ func (l *Limiter) HTTPConnStateFunc() func(net.Conn, http.ConnState) {
 			l.freeConn(conn)
 		}
 	}
+}
+
+// HTTPConnStateFunc is here for ascending compatibility reasons.
+func (l *Limiter) HTTPConnStateFunc() func(net.Conn, http.ConnState) {
+	return l.HTTPConnStateFuncWithErrorHandler(func(err error, conn net.Conn) {
+		conn.Close()
+	})
+}
+
+// HTTPConnStateFuncWithDefault429Handler return an HTTP 429 if too many connections occur.
+// BEWARE that returning HTTP 429 is done on critical path, you might choose to use
+// HTTPConnStateFuncWithErrorHandler if you want to use a non-blocking strategy.
+func (l *Limiter) HTTPConnStateFuncWithDefault429Handler(writeDeadlineMaxDelay time.Duration) func(net.Conn, http.ConnState) {
+	message := "Your IP is issuing too many concurrent connections, please rate limit your calls\n"
+	tooManyRequestsResponse := []byte(fmt.Sprintf("HTTP/1.1 429 Too Many Requests\r\n"+
+		"Content-Type: text/plain\r\n"+
+		"Content-Length: %d\r\n"+
+		"Connection: close\r\n\r\n%s", len(message), message))
+	return l.HTTPConnStateFuncWithErrorHandler(func(err error, conn net.Conn) {
+		if err == ErrPerClientIPLimitReached {
+			// We don't care about slow players
+			if writeDeadlineMaxDelay > 0 {
+				conn.SetDeadline(time.Now().Add(writeDeadlineMaxDelay))
+			}
+			conn.Write(tooManyRequestsResponse)
+		}
+		conn.Close()
+	})
 }
