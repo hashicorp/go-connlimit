@@ -35,7 +35,7 @@ type Limiter struct {
 	// endpoint and shouldn't block new connections being established.
 	cfg atomic.Value
 
-	// Max duration to try handing nicely error messages for client
+	// RWDeadlineMaxDelay is the max duration to try handing nicely error messages for client.
 	RWDeadlineMaxDelay time.Duration
 }
 
@@ -49,9 +49,10 @@ type Config struct {
 	// from the same IP and so limited as one client.
 	MaxConnsPerClientIP int
 
-	// When reading / writting errors on socket, don't spend more than this
-	// Duration before closing the connection.
-	// If not set, do not overwrite existing connection settings.
+	// RWDeadlineMaxDelay is the max delay dealing with closing the connection.
+	// This is useful to handle clients being very slow to receive content for
+	// instance to send HTTP response.
+	// If not set, do not set a max duration for send existing connection settings.
 	RWDeadlineMaxDelay time.Duration
 }
 
