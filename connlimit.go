@@ -35,7 +35,7 @@ type Limiter struct {
 	// endpoint and shouldn't block new connections being established.
 	cfg atomic.Value
 
-	// RWDeadlineMaxDelay is the max duration to try handing nicely error messages for client.
+	// Max duration to try handing nicely error messages for client
 	RWDeadlineMaxDelay time.Duration
 }
 
@@ -49,10 +49,9 @@ type Config struct {
 	// from the same IP and so limited as one client.
 	MaxConnsPerClientIP int
 
-	// RWDeadlineMaxDelay is the max delay dealing with closing the connection.
-	// This is useful to handle clients being very slow to receive content for
-	// instance to send HTTP response.
-	// If not set, do not set a max duration for send existing connection settings.
+	// When reading / writting errors on socket, don't spend more than this
+	// Duration before closing the connection.
+	// If not set, do not overwrite existing connection settings.
 	RWDeadlineMaxDelay time.Duration
 }
 
@@ -204,14 +203,11 @@ func (l *Limiter) HTTPConnStateFunc() func(net.Conn, http.ConnState) {
 			_, err := l.Accept(conn)
 			if err != nil {
 				if err == ErrPerClientIPLimitReached {
-					go func() {
-						// We don't care about slow players
-						if l.RWDeadlineMaxDelay > 0 {
-							conn.SetWriteDeadline(time.Now().Add(l.RWDeadlineMaxDelay))
-						}
-						conn.Write(tooManyRequestsResponse)
-						conn.Close()
-					}()
+					// We don't care about slow players
+					if l.RWDeadlineMaxDelay > 0 {
+						conn.SetDeadline(time.Now().Add(l.RWDeadlineMaxDelay))
+					}
+					conn.Write(tooManyRequestsResponse)
 				}
 				conn.Close()
 			}
