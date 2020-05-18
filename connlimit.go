@@ -14,6 +14,11 @@ var (
 	// ErrPerClientIPLimitReached is returned if accepting a new conn would exceed
 	// the per-client-ip limit set.
 	ErrPerClientIPLimitReached = errors.New("client connection limit reached")
+	tooManyConnsMsg            = "Your IP is issuing too many concurrent connections, please rate limit your calls\n"
+	tooManyRequestsResponse    = []byte(fmt.Sprintf("HTTP/1.1 429 Too Many Requests\r\n"+
+		"Content-Type: text/plain\r\n"+
+		"Content-Length: %d\r\n"+
+		"Connection: close\r\n\r\n%s", len(tooManyConnsMsg), tooManyConnsMsg))
 )
 
 // Limiter implements a simple limiter that tracks the number of connections
@@ -215,11 +220,6 @@ func (l *Limiter) HTTPConnStateFunc() func(net.Conn, http.ConnState) {
 // BEWARE that returning HTTP 429 is done on critical path, you might choose to use
 // HTTPConnStateFuncWithErrorHandler if you want to use a non-blocking strategy.
 func (l *Limiter) HTTPConnStateFuncWithDefault429Handler(writeDeadlineMaxDelay time.Duration) func(net.Conn, http.ConnState) {
-	message := "Your IP is issuing too many concurrent connections, please rate limit your calls\n"
-	tooManyRequestsResponse := []byte(fmt.Sprintf("HTTP/1.1 429 Too Many Requests\r\n"+
-		"Content-Type: text/plain\r\n"+
-		"Content-Length: %d\r\n"+
-		"Connection: close\r\n\r\n%s", len(message), message))
 	return l.HTTPConnStateFuncWithErrorHandler(func(err error, conn net.Conn) {
 		if err == ErrPerClientIPLimitReached {
 			// We don't care about slow players
