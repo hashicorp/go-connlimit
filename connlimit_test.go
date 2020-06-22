@@ -281,13 +281,40 @@ func TestHTTPServer(t *testing.T) {
 	lim := NewLimiter(Config{
 		MaxConnsPerClientIP: 5,
 	})
+	funToTest := func() func(net.Conn, http.ConnState) {
+		return lim.HTTPConnStateFunc()
+	}
+	testHTTPServerWithConnState(t, funToTest)
+}
+
+func TestHTTPServerWith429WithoutDuration(t *testing.T) {
+	lim := NewLimiter(Config{
+		MaxConnsPerClientIP: 5,
+	})
+	funToTest := func() func(net.Conn, http.ConnState) {
+		return lim.HTTPConnStateFuncWithDefault429Handler(time.Duration(0))
+	}
+	testHTTPServerWithConnState(t, funToTest)
+}
+
+func TestHTTPServerWith429WithDuration(t *testing.T) {
+	lim := NewLimiter(Config{
+		MaxConnsPerClientIP: 5,
+	})
+	funToTest := func() func(net.Conn, http.ConnState) {
+		return lim.HTTPConnStateFuncWithDefault429Handler(time.Duration(time.Second))
+	}
+	testHTTPServerWithConnState(t, funToTest)
+}
+
+func testHTTPServerWithConnState(t *testing.T, funToTest func() func(net.Conn, http.ConnState)) {
 
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(1 * time.Second)
 		w.Write([]byte("OK"))
 	}))
 
-	srv.Config.ConnState = lim.HTTPConnStateFunc()
+	srv.Config.ConnState = funToTest()
 	srv.Start()
 
 	client := srv.Client()
@@ -315,6 +342,9 @@ func TestHTTPServer(t *testing.T) {
 				}
 				atomic.AddUint64(&reset, 1)
 			} else {
+				if resp.StatusCode == http.StatusTooManyRequests {
+					atomic.AddUint64(&reset, 1)
+				}
 				resp.Body.Close()
 			}
 		}(i)
