@@ -6,6 +6,31 @@ import (
 	"net"
 )
 
+var (
+	ErrListenerTemporary        net.Error = ListenerError{mesg: "temporary connlimit", temporary: true}
+	ErrListenerTimeout          net.Error = ListenerError{mesg: "timeout connlimit", timeout: true}
+	ErrListenerTemporaryTimeout net.Error = ListenerError{mesg: "temporary timeout connlimit", temporary: true, timeout: true}
+)
+
+type ListenerError struct {
+	error
+	mesg      string
+	temporary bool
+	timeout   bool
+}
+
+func (l ListenerError) Temporary() bool {
+	return l.temporary
+}
+
+func (l ListenerError) Timeout() bool {
+	return l.timeout
+}
+
+func (l ListenerError) Error() string {
+	return l.mesg
+}
+
 // ListnerOption is used to configure NewListener.
 type ListenerOption = func(*Listener) error
 

@@ -2,8 +2,6 @@ package connlimit
 
 import (
 	"context"
-	"errors"
-	"io"
 	"net"
 	"net/http"
 	"testing"
@@ -73,7 +71,8 @@ func runLimitedgRPCServerWithLimitedListener(t *testing.T, ln *Listener, connTim
 
 	go func() {
 		err := srv.Serve(ln)
-		if err != nil && !errors.Is(err, io.EOF) {
+		t.Logf("grpc serve error %q", err)
+		if err != nil {
 			panic(err)
 		}
 	}()
@@ -94,7 +93,8 @@ func runLimitedHTTPServerWithLimitedListener(t *testing.T, ln *Listener, connTim
 
 	go func() {
 		err := http.Serve(ln, mux)
-		if err != nil && !errors.Is(err, ErrPerClientIPLimitReached) {
+		t.Logf("http serve error %q", err)
+		if err != nil {
 			panic(err)
 		}
 	}()
@@ -142,7 +142,7 @@ func TestNewListener(t *testing.T) {
 
 func TestNewListener_gRPCServer(t *testing.T) {
 	limLn, err := NewListener(
-		WithLimitError(io.EOF), // required to provide a known error to the gRPC server
+		WithLimitError(ErrListenerTemporary), // required to provide a known error to the gRPC server
 	)
 	require.NoError(t, err)
 
@@ -205,10 +205,29 @@ func TestNewListener_gRPCServer(t *testing.T) {
 	_, err = conn2.Write(buff2)
 	require.NoError(t, err)
 	t.Log("wrote to second client connection")
+
+	// and close one connection to make a new one
+	conn2.Close()
+	t.Log("making fourth client connection")
+	conn4, err := net.Dial("tcp", serverAddr)
+	require.NoError(t, err)
+	defer conn4.Close()
+	buff4 := make([]byte, 1)
+	t.Log("trying to read from fourth client connection")
+	_, err = conn4.Read(buff4)
+	require.NoError(t, err)
+	t.Log("read from fourth client connection again")
+	_, err = conn1.Write(buff4)
+	require.NoError(t, err)
+	t.Log("wrote to fourth client connection")
+
+	t.Log("closing server and connections")
 }
 
 func TestNewListener_HTTPServer(t *testing.T) {
-	limLn, err := NewListener()
+	limLn, err := NewListener(
+		WithLimitError(ErrListenerTemporary), // required to provide a known error to the HTTP server
+	)
 	require.NoError(t, err)
 
 	serverAddr := limLn.Addr().String()
