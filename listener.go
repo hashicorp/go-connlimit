@@ -74,6 +74,18 @@ func WithRawListener(rawLn net.Listener) ListenerOption {
 	}
 }
 
+// WithAddr provides a ListenerOption to create a new net.Listener using net.Listen with the given options.
+func WithAddr(network, address string) ListenerOption {
+	return func(ln *Listener) error {
+		rawLn, err := net.Listen(network, address)
+		if err != nil {
+			return err
+		}
+		ln.Listener = rawLn
+		return nil
+	}
+}
+
 // Accept waits for and returns the next limited connection to the caller.
 func (l *Listener) Accept() (net.Conn, error) {
 	// Use the raw listener to accept a connection.
