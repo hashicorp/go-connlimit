@@ -1,7 +1,5 @@
 linters:
  enable:
    - errcheck
-
-
 output:
  format: colored-line-number
