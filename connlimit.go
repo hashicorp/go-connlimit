@@ -3,6 +3,7 @@ package connlimit
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"sync"
@@ -224,7 +225,10 @@ func (l *Limiter) HTTPConnStateFuncWithDefault429Handler(writeDeadlineMaxDelay t
 		if err == ErrPerClientIPLimitReached {
 			// We don't care about slow players
 			if writeDeadlineMaxDelay > 0 {
-				conn.SetDeadline(time.Now().Add(writeDeadlineMaxDelay))
+				err = conn.SetDeadline(time.Now().Add(writeDeadlineMaxDelay))
+				if err != nil {
+					log.Printf("failed to set deadline: %v", err)
+				}
 			}
 			conn.Write(tooManyRequestsResponse)
 		}
