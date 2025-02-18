@@ -230,7 +230,10 @@ func (l *Limiter) HTTPConnStateFuncWithDefault429Handler(writeDeadlineMaxDelay t
 					log.Printf("failed to set deadline: %v", err)
 				}
 			}
-			conn.Write(tooManyRequestsResponse)
+			_, err := conn.Write(tooManyRequestsResponse)
+			if err != nil {
+				log.Printf("failed to write data: %v", err)
+			}
 		}
 		conn.Close()
 	})
