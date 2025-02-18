@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -46,6 +47,9 @@ func runLimitedServer(t *testing.T, lim *Limiter, connTime time.Duration) (strin
 				// Send something back so we can be sure when clients have successfully
 				// connected.
 				_, err = conn.Write([]byte("Hello"))
+				if err != nil {
+					log.Printf("failed to write data: %v", err)
+				}
 				require.NoError(t, err)
 
 				// Start a reading loop so that we detect of the client has closed the
@@ -89,7 +93,10 @@ func clientRead(t *testing.T, serverAddr string) (net.Conn, string, error) {
 
 	// Prevent the test from hanging if the server somehow doesn't send but also
 	// doesn't close the conn.
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	err = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if err != nil {
+		log.Printf("failed to set read deadline: %v", err)
+	}
 
 	buf := make([]byte, 10)
 	n, err := conn.Read(buf)
@@ -311,7 +318,10 @@ func testHTTPServerWithConnState(t *testing.T, funToTest func() func(net.Conn, h
 
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(1 * time.Second)
-		w.Write([]byte("OK"))
+		_, err := w.Write([]byte("OK"))
+		if err != nil {
+			log.Printf("failed to write data: %v", err)
+		}
 	}))
 
 	srv.Config.ConnState = funToTest()
