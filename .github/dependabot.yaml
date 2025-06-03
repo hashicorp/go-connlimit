@@ -11,7 +11,7 @@ updates:
     commit-message:
       prefix: "[chore] : "
 
-  - package-ecosystem: "github-actions"
+  - package-ecosystem: "gomod"
     directory: "/"
     schedule:
       interval: "weekly"
