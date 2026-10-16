@@ -9,7 +9,7 @@ copywriteheaders:
 .PHONY: deps
 deps:
 	@go install github.com/hashicorp/copywrite@b3e6599f43beff698f471c6f46888045453fa030 # v0.25.3
-	@go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@f838df1edb6265abbfa24f5cbb7381b21c735642 # v2.13.0
+	@go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@114493f9b3e7257d29e4130f2b4a4aadefbb6845 # v2.14.0
 
 .PHONY: lint
 lint:
